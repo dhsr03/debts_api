@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Debt, DebtStatus } from './entities/debt.entity';
@@ -8,19 +13,27 @@ import { UpdateDebtDto } from './dto/update-debt.dto';
 
 @Injectable()
 export class DebtsService {
+  private readonly logger = new Logger(DebtsService.name);
+
   constructor(
     @InjectRepository(Debt)
-    private repo: Repository<Debt>,
-    private cache: CacheService,
+    private readonly repo: Repository<Debt>,
+    private readonly cache: CacheService,
   ) {}
 
-  async findByUser(userId: string, status: 'all' | 'pending' | 'paid') {
+  async findByUser(
+    userId: string,
+    status: 'all' | 'pending' | 'paid',
+  ) {
     const cacheKey = `debts:user:${userId}:${status}`;
 
     const cached = await this.cache.get<Debt[]>(cacheKey);
     if (cached) {
+      this.logger.debug(`CACHE HIT → ${cacheKey}`);
       return cached;
     }
+
+    this.logger.debug(`DB HIT → ${cacheKey}`);
 
     const where: any = { user: { id: userId } };
     if (status === 'pending') where.status = DebtStatus.PENDING;
@@ -36,7 +49,12 @@ export class DebtsService {
     const cacheKey = `debt:${debtId}`;
 
     const cached = await this.cache.get<Debt>(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      this.logger.debug(`CACHE HIT → ${cacheKey}`);
+      return cached;
+    }
+
+    this.logger.debug(`DB HIT → ${cacheKey}`);
 
     const debt = await this.repo.findOne({
       where: { id: debtId, user: { id: userId } },
@@ -63,6 +81,8 @@ export class DebtsService {
     });
 
     const saved = await this.repo.save(debt);
+
+    this.logger.debug(`INVALIDANDO CACHE → usuario ${userId}`);
     await this.cache.invalidateUserDebts(userId, saved.id);
 
     return {
@@ -83,6 +103,7 @@ export class DebtsService {
     Object.assign(debt, dto);
     const updated = await this.repo.save(debt);
 
+    this.logger.debug(`INVALIDANDO CACHE → deuda ${debtId}`);
     await this.cache.invalidateUserDebts(userId, debtId);
 
     return {
@@ -95,6 +116,8 @@ export class DebtsService {
     const debt = await this.findOne(userId, debtId);
 
     await this.repo.remove(debt);
+
+    this.logger.debug(`INVALIDANDO CACHE → deuda ${debtId}`);
     await this.cache.invalidateUserDebts(userId, debtId);
 
     return {
@@ -113,6 +136,8 @@ export class DebtsService {
     debt.paidAt = new Date();
 
     const saved = await this.repo.save(debt);
+
+    this.logger.debug(`INVALIDANDO CACHE → deuda ${debtId}`);
     await this.cache.invalidateUserDebts(userId, debtId);
 
     return {
@@ -123,8 +148,14 @@ export class DebtsService {
 
   async summary(userId: string) {
     const cacheKey = `debts:summary:user:${userId}`;
+
     const cached = await this.cache.get<any>(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      this.logger.debug(`CACHE HIT → ${cacheKey}`);
+      return cached;
+    }
+
+    this.logger.debug(`DB HIT → ${cacheKey}`);
 
     const debts = await this.repo.find({
       where: { user: { id: userId } },
