@@ -25,20 +25,23 @@ El desarrollo prioriza:
 
 ## 📂 Estructura del proyecto
 
+```bash
 src/
-├── auth
-├── users
-├── debts
-├── cache
-├── app.module.ts
-├── app.controller.ts
-├── app.service.ts
-└── main.ts
+    ├── auth
+    ├── users
+    ├── debts
+    ├── cache
+    ├── app.module.ts
+    ├── app.controller.ts
+    ├── app.service.ts
+    └── main.ts
+```
 
 ## ⚙️ Configuración
 
 Crear archivo `.env`:
 
+```bash
 PORT=4500
 FRONTEND_URL=http://localhost:3000
 
@@ -55,18 +58,25 @@ CACHE_DRIVER=redis
 REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_TTL_SECONDS=120
+```
 
 ## ▶️ Ejecución
 
+```bash
 npm install  
 npm run start:dev
+```
 
 ## 🧪 Tests
 
+```bash
 npm run test
+```
 
 ## 👤 Autor
 
 Daniel Humberto Soto Rincón
+
 dhsr03@gmail.com
+
 3204236748
