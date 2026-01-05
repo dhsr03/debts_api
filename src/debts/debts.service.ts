@@ -21,10 +21,7 @@ export class DebtsService {
     private readonly cache: CacheService,
   ) {}
 
-  async findByUser(
-    userId: string,
-    status: 'all' | 'pending' | 'paid',
-  ) {
+  async findByUser(userId: string, status: 'all' | 'pending' | 'paid') {
     const cacheKey = `debts:user:${userId}:${status}`;
 
     const cached = await this.cache.get<Debt[]>(cacheKey);
@@ -39,7 +36,11 @@ export class DebtsService {
     if (status === 'pending') where.status = DebtStatus.PENDING;
     if (status === 'paid') where.status = DebtStatus.PAID;
 
-    const debts = await this.repo.find({ where });
+    const debts = await this.repo.find({
+      where,
+      order: { createdAt: 'DESC' },
+    });
+
     await this.cache.set(cacheKey, debts);
 
     return debts;
@@ -49,7 +50,7 @@ export class DebtsService {
     const cacheKey = `debt:${debtId}`;
 
     const cached = await this.cache.get<Debt>(cacheKey);
-    if (cached) {
+    if (cached && cached.user.id === userId) {
       this.logger.debug(`CACHE HIT → ${cacheKey}`);
       return cached;
     }
@@ -85,10 +86,7 @@ export class DebtsService {
     this.logger.debug(`INVALIDANDO CACHE → usuario ${userId}`);
     await this.cache.invalidateUserDebts(userId, saved.id);
 
-    return {
-      mensaje: 'Deuda registrada correctamente',
-      deuda: saved,
-    };
+    return saved;
   }
 
   async update(userId: string, debtId: string, dto: UpdateDebtDto) {
@@ -106,10 +104,7 @@ export class DebtsService {
     this.logger.debug(`INVALIDANDO CACHE → deuda ${debtId}`);
     await this.cache.invalidateUserDebts(userId, debtId);
 
-    return {
-      mensaje: 'Deuda actualizada correctamente',
-      deuda: updated,
-    };
+    return updated;
   }
 
   async remove(userId: string, debtId: string) {
@@ -140,10 +135,7 @@ export class DebtsService {
     this.logger.debug(`INVALIDANDO CACHE → deuda ${debtId}`);
     await this.cache.invalidateUserDebts(userId, debtId);
 
-    return {
-      mensaje: 'La deuda fue marcada como pagada',
-      deuda: saved,
-    };
+    return saved;
   }
 
   async summary(userId: string) {
@@ -163,13 +155,15 @@ export class DebtsService {
 
     const resumen = {
       totalPagado: debts
-        .filter(d => d.status === DebtStatus.PAID)
+        .filter((d) => d.status === DebtStatus.PAID)
         .reduce((a, b) => a + Number(b.amount), 0),
       totalPendiente: debts
-        .filter(d => d.status === DebtStatus.PENDING)
+        .filter((d) => d.status === DebtStatus.PENDING)
         .reduce((a, b) => a + Number(b.amount), 0),
-      cantidadPagadas: debts.filter(d => d.status === DebtStatus.PAID).length,
-      cantidadPendientes: debts.filter(d => d.status === DebtStatus.PENDING).length,
+      cantidadPagadas: debts.filter((d) => d.status === DebtStatus.PAID)
+        .length,
+      cantidadPendientes: debts.filter((d) => d.status === DebtStatus.PENDING)
+        .length,
     };
 
     await this.cache.set(cacheKey, resumen);
@@ -184,10 +178,19 @@ export class DebtsService {
     const debts = await this.findByUser(userId, status);
 
     if (format === 'json') {
+      const data = debts.map((d) => ({
+        id: d.id,
+        titulo: d.title,
+        valor: Number(d.amount),
+        estado: this.formatStatus(d.status),
+        fechaCreacion: this.formatDate(d.createdAt),
+        fechaPago: this.formatDate(d.paidAt),
+      }));
+
       return {
         mensaje: 'Exportación realizada correctamente',
         formato: 'json',
-        datos: debts,
+        datos: data,
       };
     }
 
@@ -200,24 +203,45 @@ export class DebtsService {
       'fechaPago',
     ];
 
-    const rows = debts.map(d => [
+    const rows = debts.map((d) => [
       d.id,
       `"${d.title.replace(/"/g, '""')}"`,
       d.amount,
-      d.status,
-      d.createdAt?.toISOString(),
-      d.paidAt ? d.paidAt.toISOString() : '',
+      this.formatStatus(d.status),
+      this.formatDate(d.createdAt),
+      this.formatDate(d.paidAt),
     ]);
 
-    const csv = [
-      headers.join(','),
-      ...rows.map(r => r.join(',')),
-    ].join('\n');
+    const BOM = '\uFEFF';
+
+    const csv =
+      BOM +
+      [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
 
     return {
       mensaje: 'Exportación realizada correctamente',
       formato: 'csv',
       contenido: csv,
     };
+  }
+
+  private formatDate(value?: Date | string | null): string {
+    if (!value) return '';
+
+    const date = value instanceof Date ? value : new Date(value);
+    if (isNaN(date.getTime())) return '';
+
+    return date.toISOString().split('T')[0];
+  }
+
+  private formatStatus(status: DebtStatus): string {
+    switch (status) {
+      case DebtStatus.PAID:
+        return 'Pagado';
+      case DebtStatus.PENDING:
+        return 'Pendiente';
+      default:
+        return status;
+    }
   }
 }

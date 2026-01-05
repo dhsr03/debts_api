@@ -67,6 +67,17 @@ npm install
 npm run start:dev
 ```
 
+Crear y correr el docker para la cache local con redis:
+
+```bash
+docker compose up -d
+```
+
+Verificar que Redis esté corriendo:
+```bash
+docker ps
+```
+
 ## 🧪 Tests
 
 ```bash
